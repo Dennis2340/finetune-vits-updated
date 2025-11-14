@@ -706,10 +706,14 @@ def main():
         verbose=False,
     )
 
-    # 6. Resample speech dataset if necessary
-    dataset_sampling_rate = next(iter(raw_datasets.values())).features[data_args.audio_column_name].sampling_rate
-    if dataset_sampling_rate != feature_extractor.sampling_rate:
-        with training_args.main_process_first(desc="resample"):
+    # 6. Ensure audio column is a proper datasets.features.Audio and resample if necessary
+    audio_feature = next(iter(raw_datasets.values())).features[data_args.audio_column_name]
+    dataset_sampling_rate = getattr(audio_feature, "sampling_rate", None)
+    need_cast = not isinstance(audio_feature, datasets.features.Audio) or (
+        dataset_sampling_rate is not None and dataset_sampling_rate != feature_extractor.sampling_rate
+    )
+    if need_cast:
+        with training_args.main_process_first(desc="cast/resample audio column"):
             raw_datasets = raw_datasets.cast_column(
                 data_args.audio_column_name, datasets.features.Audio(sampling_rate=feature_extractor.sampling_rate)
             )
