@@ -786,33 +786,33 @@ def main():
     if speaker_id_column_name is not None:
         remove_columns = [col for col in remove_columns if col != speaker_id_column_name]
 
-    # filter data that is shorter than min_input_length or longer than
-    # max_input_length
-    def is_audio_in_length_range(length, text):
-        length_ = len(length["array"])
-        return (length_ > min_input_length and length_ < max_input_length) and text is not None
-
-    with training_args.main_process_first(desc="filter audio lengths"):
-        vectorized_datasets = raw_datasets.filter(
-            is_audio_in_length_range,
-            num_proc=num_workers,
-            input_columns=[audio_column_name, text_column_name],
-        )
+    # Start from raw datasets; we'll compute lengths in map then filter to reduce memory usage.
+    vectorized_datasets = raw_datasets
 
     with training_args.main_process_first(desc="dataset map pre-processing"):
-        # convert from np.float64 to np.float32
-        vectorized_datasets.set_format(type="numpy", columns=[audio_column_name])
+        # Map first to compute features and lengths per example (single-process by default to reduce memory).
         vectorized_datasets = vectorized_datasets.map(
             prepare_dataset,
             remove_columns=remove_columns,
-            num_proc=num_workers,
+            num_proc=1,
             desc="preprocess train dataset",
+        )
+
+    # Now filter by waveform length using computed 'waveform_input_length' to avoid loading audio twice.
+    def is_len_ok(waveform_input_length, text):
+        return (waveform_input_length > min_input_length and waveform_input_length < max_input_length) and text is not None
+
+    with training_args.main_process_first(desc="filter audio lengths"):
+        vectorized_datasets = vectorized_datasets.filter(
+            is_len_ok,
+            num_proc=1,
+            input_columns=["waveform_input_length", text_column_name],
         )
 
     with training_args.main_process_first(desc="filter tokens lengths"):
         vectorized_datasets = vectorized_datasets.filter(
             lambda x: x < data_args.max_tokens_length,
-            num_proc=num_workers,
+            num_proc=1,
             input_columns=["tokens_input_length"],
         )
 
