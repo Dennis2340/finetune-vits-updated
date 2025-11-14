@@ -168,12 +168,24 @@ class DataTrainingArguments:
     dataset_config_name: Optional[str] = field(
         default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}
     )
+    data_dir: Optional[str] = field(
+        default=None, metadata={"help": "Path within the dataset repository to load data from (datasets.load_dataset data_dir)."}
+    )
     overwrite_cache: bool = field(
         default=False, metadata={"help": "Overwrite the cached training and evaluation sets"}
     )
     preprocessing_num_workers: Optional[int] = field(
         default=None,
         metadata={"help": "The number of processes to use for the preprocessing."},
+    )
+    trust_remote_code: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to allow datasets to execute code from the dataset card/repo (datasets.load_dataset trust_remote_code). "
+                "Enable only for sources you trust."
+            )
+        },
     )
     max_train_samples: Optional[int] = field(
         default=None,
@@ -594,6 +606,8 @@ def main():
             split=data_args.train_split_name,
             cache_dir=model_args.cache_dir,
             token=model_args.token,
+            data_dir=data_args.data_dir,
+            trust_remote_code=data_args.trust_remote_code,
         )
 
     if training_args.do_eval:
@@ -603,6 +617,8 @@ def main():
             split=data_args.eval_split_name,
             cache_dir=model_args.cache_dir,
             token=model_args.token,
+            data_dir=data_args.data_dir,
+            trust_remote_code=data_args.trust_remote_code,
         )
 
     if data_args.audio_column_name not in next(iter(raw_datasets.values())).column_names:
