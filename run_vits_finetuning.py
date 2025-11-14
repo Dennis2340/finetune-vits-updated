@@ -33,7 +33,11 @@ from transformers.feature_extraction_utils import BatchFeature
 from transformers.optimization import get_scheduler
 from transformers.trainer_pt_utils import LengthGroupedSampler
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
-from transformers.utils import send_example_telemetry
+try:
+    from transformers.utils import send_example_telemetry
+except Exception:
+    def send_example_telemetry(*args, **kwargs):  # fallback for newer/older Transformers
+        return None
 from utils import plot_alignment_to_numpy, plot_spectrogram_to_numpy, VitsDiscriminator, VitsModelForPreTraining, VitsFeatureExtractor, slice_segments, VitsConfig, uromanize
 
 
