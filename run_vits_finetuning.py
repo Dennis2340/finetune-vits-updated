@@ -390,9 +390,16 @@ class DataCollatorTTSWithPadding:
         batch["waveform"] = self.pad_waveform(waveforms)
 
         # compute features on the fly to avoid storing huge arrays in the dataset
+        # infer sampling rate from batch if present and consistent; otherwise fallback
+        srs = [
+            feature[self.audio_column_name]["sampling_rate"]
+            for feature in features
+            if isinstance(feature.get(self.audio_column_name, {}), dict) and "sampling_rate" in feature[self.audio_column_name]
+        ]
+        sr = srs[0] if len(srs) == len(features) and len(set(srs)) == 1 else self.feature_extractor.sampling_rate
         audio_inputs = self.feature_extractor(
             waveforms,
-            sampling_rate=self.feature_extractor.sampling_rate,
+            sampling_rate=sr,
             return_attention_mask=True,
             do_normalize=self.do_normalize,
         )
@@ -706,17 +713,15 @@ def main():
         verbose=False,
     )
 
-    # 6. Ensure audio column is a proper datasets.features.Audio and resample if necessary
+    # 6. Audio column handling: avoid expensive casting if dataset doesn't use Audio feature
     audio_feature = next(iter(raw_datasets.values())).features[data_args.audio_column_name]
-    dataset_sampling_rate = getattr(audio_feature, "sampling_rate", None)
-    need_cast = not isinstance(audio_feature, datasets.features.Audio) or (
-        dataset_sampling_rate is not None and dataset_sampling_rate != feature_extractor.sampling_rate
-    )
-    if need_cast:
-        with training_args.main_process_first(desc="cast/resample audio column"):
-            raw_datasets = raw_datasets.cast_column(
-                data_args.audio_column_name, datasets.features.Audio(sampling_rate=feature_extractor.sampling_rate)
-            )
+    if isinstance(audio_feature, datasets.features.Audio):
+        dataset_sampling_rate = getattr(audio_feature, "sampling_rate", None)
+        if dataset_sampling_rate is not None and dataset_sampling_rate != feature_extractor.sampling_rate:
+            with training_args.main_process_first(desc="resample audio column"):
+                raw_datasets = raw_datasets.cast_column(
+                    data_args.audio_column_name, datasets.features.Audio(sampling_rate=feature_extractor.sampling_rate)
+                )
 
     # 7. Preprocessing the datasets.
     # We need to read the audio files as arrays and tokenize the targets.
