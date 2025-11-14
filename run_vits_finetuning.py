@@ -791,8 +791,7 @@ def main():
         string_inputs = tokenizer(input_str, return_attention_mask=False)
 
         batch[model_input_name] = string_inputs.get("input_ids")[: max_tokens_length + 1]
-        # compute audio length cheaply for filtering, without storing audio
-        batch["waveform_input_length"] = len(batch[audio_column_name]["array"]) 
+        # Do not touch audio here to avoid decoding entire waveforms during map
         batch["tokens_input_length"] = len(batch[model_input_name])
 
         if speaker_id_column_name is not None:
@@ -821,17 +820,7 @@ def main():
             desc="preprocess train dataset",
         )
 
-    # Now filter by waveform length using computed 'waveform_input_length' to avoid loading audio twice.
-    def is_len_ok(waveform_input_length, text):
-        return (waveform_input_length > min_input_length and waveform_input_length < max_input_length) and text is not None
-
-    with training_args.main_process_first(desc="filter audio lengths"):
-        vectorized_datasets = vectorized_datasets.filter(
-            is_len_ok,
-            num_proc=1,
-            keep_in_memory=False,
-            input_columns=["waveform_input_length", text_column_name],
-        )
+    # Skip waveform-length filtering to avoid decoding audio during preprocessing
 
     with training_args.main_process_first(desc="filter tokens lengths"):
         vectorized_datasets = vectorized_datasets.filter(
