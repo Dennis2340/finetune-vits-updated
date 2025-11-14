@@ -328,6 +328,8 @@ class DataCollatorTTSWithPadding:
     tokenizer: Any
     feature_extractor: Any
     forward_attention_mask: bool
+    audio_column_name: str
+    do_normalize: bool
 
     def pad_waveform(self, raw_speech):
         is_batched_numpy = isinstance(raw_speech, np.ndarray) and len(raw_speech.shape) > 1
@@ -370,29 +372,41 @@ class DataCollatorTTSWithPadding:
         # pad input tokens
         batch = self.tokenizer.pad(input_ids, return_tensors="pt", return_attention_mask=self.forward_attention_mask)
 
-        # pad waveform
-        waveforms = [np.array(feature["waveform"]) for feature in features]
+        # gather raw waveforms from dataset's audio column (lazy decode here)
+        waveforms = [
+            np.array(feature[self.audio_column_name]["array"], dtype=np.float32)
+            for feature in features
+        ]
+
+        # keep raw waveforms (padded) for model input that needs them
         batch["waveform"] = self.pad_waveform(waveforms)
 
-        # pad spectrogram
-        label_features = [np.array(feature["labels"]) for feature in features]
-        labels_batch = self.feature_extractor.pad(
-            {"input_features": [i.T for i in label_features]}, return_tensors="pt", return_attention_mask=True
+        # compute features on the fly to avoid storing huge arrays in the dataset
+        audio_inputs = self.feature_extractor(
+            waveforms,
+            sampling_rate=self.feature_extractor.sampling_rate,
+            return_attention_mask=True,
+            do_normalize=self.do_normalize,
         )
 
-        labels = labels_batch["input_features"].transpose(1, 2)
-        batch["labels"] = labels
+        # pad spectrogram as labels
+        label_features = audio_inputs.get("input_features")
+        labels_batch = self.feature_extractor.pad(
+            {"input_features": [np.asarray(feat).T for feat in label_features]},
+            return_tensors="pt",
+            return_attention_mask=True,
+        )
+        batch["labels"] = labels_batch["input_features"].transpose(1, 2)
         batch["labels_attention_mask"] = labels_batch["attention_mask"]
 
-        # pad mel spectrogram
-        mel_scaled_input_features = {
-            "input_features": [np.array(feature["mel_scaled_input_features"]).squeeze().T for feature in features]
-        }
-        mel_scaled_input_features = self.feature_extractor.pad(
-            mel_scaled_input_features, return_tensors="pt", return_attention_mask=True
+        # pad mel-scaled spectrograms
+        mel_feats = audio_inputs.get("mel_scaled_input_features")
+        mel_scaled = self.feature_extractor.pad(
+            {"input_features": [np.asarray(feat).squeeze().T for feat in mel_feats]},
+            return_tensors="pt",
+            return_attention_mask=True,
         )["input_features"].transpose(1, 2)
-
-        batch["mel_scaled_input_features"] = mel_scaled_input_features
+        batch["mel_scaled_input_features"] = mel_scaled
         batch["speaker_id"] = (
             torch.tensor([feature["speaker_id"] for feature in features]) if "speaker_id" in features[0] else None
         )
@@ -751,18 +765,7 @@ def main():
                 new_num_speakers = len(speaker_id_dict)
 
     def prepare_dataset(batch):
-        # process target audio
-        sample = batch[audio_column_name]
-        audio_inputs = feature_extractor(
-            sample["array"],
-            sampling_rate=sample["sampling_rate"],
-            return_attention_mask=False,
-            do_normalize=do_normalize,
-        )
-
-        batch["labels"] = audio_inputs.get("input_features")[0]
-
-        # process text inputs
+        # process text inputs only (avoid heavy feature extraction in map)
         input_str = batch[text_column_name].lower() if do_lower_case else batch[text_column_name]
         
         if is_uroman:
@@ -770,11 +773,9 @@ def main():
         string_inputs = tokenizer(input_str, return_attention_mask=False)
 
         batch[model_input_name] = string_inputs.get("input_ids")[: max_tokens_length + 1]
-        batch["waveform_input_length"] = len(sample["array"])
+        # compute audio length cheaply for filtering, without storing audio
+        batch["waveform_input_length"] = len(batch[audio_column_name]["array"]) 
         batch["tokens_input_length"] = len(batch[model_input_name])
-        batch["waveform"] = batch[audio_column_name]["array"]
-
-        batch["mel_scaled_input_features"] = audio_inputs.get("mel_scaled_input_features")[0]
 
         if speaker_id_column_name is not None:
             if new_num_speakers > 1:
@@ -783,6 +784,8 @@ def main():
         return batch
 
     remove_columns = next(iter(raw_datasets.values())).column_names
+    # Keep audio column for collator-side feature extraction, and keep speaker id if present
+    remove_columns = [col for col in remove_columns if col != audio_column_name]
     if speaker_id_column_name is not None:
         remove_columns = [col for col in remove_columns if col != speaker_id_column_name]
 
@@ -885,6 +888,8 @@ def main():
         tokenizer=tokenizer,
         feature_extractor=feature_extractor,
         forward_attention_mask=forward_attention_mask,
+        audio_column_name=audio_column_name,
+        do_normalize=do_normalize,
     )
 
     with training_args.main_process_first():
