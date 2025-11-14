@@ -182,7 +182,7 @@ class DataTrainingArguments:
         default=None,
         metadata={"help": "The number of processes to use for the preprocessing."},
     )
-    trust_remote_code: bool = field(
+    dataset_trust_remote_code: bool = field(
         default=False,
         metadata={
             "help": (
@@ -611,7 +611,7 @@ def main():
             cache_dir=model_args.cache_dir,
             token=model_args.token,
             data_dir=data_args.data_dir,
-            trust_remote_code=data_args.trust_remote_code,
+            trust_remote_code=data_args.dataset_trust_remote_code,
         )
 
     if training_args.do_eval:
@@ -622,7 +622,7 @@ def main():
             cache_dir=model_args.cache_dir,
             token=model_args.token,
             data_dir=data_args.data_dir,
-            trust_remote_code=data_args.trust_remote_code,
+            trust_remote_code=data_args.dataset_trust_remote_code,
         )
 
     if data_args.audio_column_name not in next(iter(raw_datasets.values())).column_names:
@@ -699,7 +699,7 @@ def main():
     speaker_id_column_name = data_args.speaker_id_column_name
     filter_on_speaker_id = data_args.filter_on_speaker_id
     do_normalize = data_args.do_normalize
-    is_uroman = tokenizer.is_uroman
+    is_uroman = getattr(tokenizer, "is_uroman", False)
     uroman_path = None
     if is_uroman:
         uroman_path = data_args.uroman_path if data_args.uroman_path is not None else os.environ.get("UROMAN")

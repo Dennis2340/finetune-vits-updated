@@ -23,7 +23,7 @@
     "min_duration_in_seconds": 0.0,
     "max_tokens_length": 450,
     "preprocessing_num_workers": 2,
-    "trust_remote_code": true,
+    "dataset_trust_remote_code": true,
     "uroman_path": null,
     "full_generation_sample_text": "Dis wan na test, mek wi si wetin go comot."
   },
