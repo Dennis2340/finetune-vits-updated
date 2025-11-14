@@ -175,6 +175,14 @@ class DataTrainingArguments:
     data_dir: Optional[str] = field(
         default=None, metadata={"help": "Path within the dataset repository to load data from (datasets.load_dataset data_dir)."}
     )
+    train_from_disk_dir: Optional[str] = field(
+        default=None,
+        metadata={"help": "Absolute path to a preprocessed train dataset saved with datasets.save_to_disk."},
+    )
+    eval_from_disk_dir: Optional[str] = field(
+        default=None,
+        metadata={"help": "Absolute path to a preprocessed eval dataset saved with datasets.save_to_disk."},
+    )
     overwrite_cache: bool = field(
         default=False, metadata={"help": "Overwrite the cached training and evaluation sets"}
     )
@@ -620,24 +628,30 @@ def main():
     raw_datasets = DatasetDict()
 
     if training_args.do_train:
-        raw_datasets["train"] = load_dataset(
-            data_args.dataset_name,
-            data_args.dataset_config_name,
-            split=data_args.train_split_name,
-            cache_dir=model_args.cache_dir,
-            token=model_args.token,
-            data_dir=data_args.data_dir,
-        )
+        if data_args.train_from_disk_dir is not None:
+            raw_datasets["train"] = datasets.load_from_disk(data_args.train_from_disk_dir)
+        else:
+            raw_datasets["train"] = load_dataset(
+                data_args.dataset_name,
+                data_args.dataset_config_name,
+                split=data_args.train_split_name,
+                cache_dir=model_args.cache_dir,
+                token=model_args.token,
+                data_dir=data_args.data_dir,
+            )
 
     if training_args.do_eval:
-        raw_datasets["eval"] = load_dataset(
-            data_args.dataset_name,
-            data_args.dataset_config_name,
-            split=data_args.eval_split_name,
-            cache_dir=model_args.cache_dir,
-            token=model_args.token,
-            data_dir=data_args.data_dir,
-        )
+        if data_args.eval_from_disk_dir is not None:
+            raw_datasets["eval"] = datasets.load_from_disk(data_args.eval_from_disk_dir)
+        else:
+            raw_datasets["eval"] = load_dataset(
+                data_args.dataset_name,
+                data_args.dataset_config_name,
+                split=data_args.eval_split_name,
+                cache_dir=model_args.cache_dir,
+                token=model_args.token,
+                data_dir=data_args.data_dir,
+            )
 
     if data_args.audio_column_name not in next(iter(raw_datasets.values())).column_names:
         raise ValueError(
@@ -798,7 +812,7 @@ def main():
             prepare_dataset,
             remove_columns=remove_columns,
             num_proc=1,
-            writer_batch_size=32,
+            writer_batch_size=8,
             keep_in_memory=False,
             desc="preprocess train dataset",
         )
