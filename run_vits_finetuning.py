@@ -795,6 +795,8 @@ def main():
             prepare_dataset,
             remove_columns=remove_columns,
             num_proc=1,
+            writer_batch_size=32,
+            keep_in_memory=False,
             desc="preprocess train dataset",
         )
 
@@ -806,6 +808,7 @@ def main():
         vectorized_datasets = vectorized_datasets.filter(
             is_len_ok,
             num_proc=1,
+            keep_in_memory=False,
             input_columns=["waveform_input_length", text_column_name],
         )
 
@@ -813,6 +816,7 @@ def main():
         vectorized_datasets = vectorized_datasets.filter(
             lambda x: x < data_args.max_tokens_length,
             num_proc=1,
+            keep_in_memory=False,
             input_columns=["tokens_input_length"],
         )
 
