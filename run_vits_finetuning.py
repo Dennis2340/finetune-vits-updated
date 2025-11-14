@@ -613,7 +613,6 @@ def main():
             cache_dir=model_args.cache_dir,
             token=model_args.token,
             data_dir=data_args.data_dir,
-            trust_remote_code=data_args.dataset_trust_remote_code,
         )
 
     if training_args.do_eval:
@@ -624,7 +623,6 @@ def main():
             cache_dir=model_args.cache_dir,
             token=model_args.token,
             data_dir=data_args.data_dir,
-            trust_remote_code=data_args.dataset_trust_remote_code,
         )
 
     if data_args.audio_column_name not in next(iter(raw_datasets.values())).column_names:
@@ -694,7 +692,16 @@ def main():
     min_input_length = data_args.min_duration_in_seconds * feature_extractor.sampling_rate
     max_tokens_length = data_args.max_tokens_length
     audio_column_name = data_args.audio_column_name
+    # Make preprocessing workers robust on low-memory envs (e.g., Colab)
     num_workers = data_args.preprocessing_num_workers
+    try:
+        env_override = os.environ.get("HF_NUM_WORKERS")
+        if env_override is not None:
+            num_workers = int(env_override)
+    except Exception:
+        pass
+    if not num_workers or num_workers < 1:
+        num_workers = 1
     text_column_name = data_args.text_column_name
     model_input_name = tokenizer.model_input_names[0]
     do_lower_case = data_args.do_lower_case
