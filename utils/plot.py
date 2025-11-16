@@ -27,8 +27,10 @@ def plot_spectrogram_to_numpy(spectrogram):
     plt.tight_layout()
 
     fig.canvas.draw()
-    data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    # Use backend-compatible RGBA buffer and convert to RGB
+    buf = fig.canvas.buffer_rgba()
+    w, h = fig.canvas.get_width_height()
+    data = np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 4)[..., :3].copy()
     plt.close()
     return data
 
@@ -56,7 +58,9 @@ def plot_alignment_to_numpy(alignment, info=None):
     plt.tight_layout()
 
     fig.canvas.draw()
-    data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    # Use backend-compatible RGBA buffer and convert to RGB
+    buf = fig.canvas.buffer_rgba()
+    w, h = fig.canvas.get_width_height()
+    data = np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 4)[..., :3].copy()
     plt.close()
     return data
